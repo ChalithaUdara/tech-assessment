@@ -20,6 +20,7 @@ class Settings:
     AZURE_OPENAI_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
     AZURE_OPENAI_API_VERSION: str = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
     MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-4o")  # For display/telemetry purposes
+    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 
     # GPT-4o Pricing Constants (per 1M tokens)
     # Source: OpenAI pricing as of 2024
@@ -28,6 +29,34 @@ class Settings:
 
     # Message Persistence
     MAX_MESSAGES: int = 10  # Keep last N messages
+
+    # Qdrant Configuration
+    QDRANT_URL: str = os.getenv("QDRANT_URL", "http://localhost:6333")
+    QDRANT_API_KEY: Optional[str] = os.getenv("QDRANT_API_KEY", None)
+    QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "datacom_rag")
+
+    # RAG Configuration
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
+    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
+    
+    # Text Splitter Configuration
+    # Options: "recursive", "character"
+    TEXT_SPLITTER_TYPE: str = os.getenv("TEXT_SPLITTER_TYPE", "recursive")
+
+    # Vector Store Configuration
+    # Options: "qdrant"
+    VECTOR_STORE_TYPE: str = os.getenv("VECTOR_STORE_TYPE", "qdrant")
+    
+    # Embedding Configuration
+    # Options: "azure_openai", "fastembed"
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "fastembed")
+    
+    # For Azure OpenAI
+    EMBEDDING_DEPLOYMENT: str = os.getenv("EMBEDDING_DEPLOYMENT", "text-embedding-3-small")
+    
+    # For FastEmbed
+    # Default: BAAI/bge-small-en-v1.5
+    FASTEMBED_MODEL_NAME: str = os.getenv("FASTEMBED_MODEL_NAME", "BAAI/bge-small-en-v1.5")
 
     @classmethod
     def validate(cls) -> None:
