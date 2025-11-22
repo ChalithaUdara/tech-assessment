@@ -3,9 +3,9 @@ from langchain_core.documents import Document
 from langchain_text_splitters import TextSplitter
 from langchain_core.embeddings import Embeddings
 from langchain_qdrant import QdrantVectorStore
-from qdrant_client.http import models
 
 from datacom_ai.config.settings import settings
+from datacom_ai.rag.factories import VectorStoreFactory
 from datacom_ai.utils.logger import logger
 
 class IndexPipeline:
@@ -35,20 +35,15 @@ class IndexPipeline:
         logger.info(f"Created {len(chunks)} chunks from {len(documents)} documents.")
 
         # 2. Index into Vector Store
-        # Note: We are tightly coupled to Qdrant here for collection creation. 
-        # Ideally this should be abstracted further, but for now this is better than before.
         if settings.VECTOR_STORE_TYPE == "qdrant":
             logger.info(f"Indexing into Qdrant collection: {settings.QDRANT_COLLECTION_NAME}...")
             
-            # Ensure collection exists
-            if not self.client.collection_exists(settings.QDRANT_COLLECTION_NAME):
-                 vector_size = 384 if settings.EMBEDDING_PROVIDER == "fastembed" else 1536
-                 logger.info(f"Creating collection with vector size: {vector_size}")
-                 
-                 self.client.create_collection(
-                    collection_name=settings.QDRANT_COLLECTION_NAME,
-                    vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
-                )
+            # Ensure collection exists using centralized factory method
+            VectorStoreFactory.ensure_collection_exists(
+                client=self.client,
+                collection_name=settings.QDRANT_COLLECTION_NAME,
+                embedding_provider=settings.EMBEDDING_PROVIDER
+            )
 
             QdrantVectorStore.from_documents(
                 documents=chunks,

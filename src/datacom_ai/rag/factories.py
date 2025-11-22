@@ -7,9 +7,9 @@ from datacom_ai.rag.embeddings import CustomFastEmbedEmbeddings
 # from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from qdrant_client.http import models
 
 from datacom_ai.config.settings import settings
+from datacom_ai.rag.adapters import QdrantAdapter, VectorStoreAdapter
 from datacom_ai.utils.logger import logger
 
 class EmbeddingFactory:
@@ -58,6 +58,8 @@ class LLMFactory:
         return create_llm_client()
 
 class VectorStoreFactory:
+    """Factory for creating vector store clients and adapters."""
+    
     @staticmethod
     def create_client() -> Any:
         """Create a vector store client."""
@@ -70,24 +72,56 @@ class VectorStoreFactory:
             raise ValueError(f"Unsupported vector store type: {settings.VECTOR_STORE_TYPE}")
 
     @staticmethod
-    def create_store(embeddings: Embeddings, client: Any) -> QdrantVectorStore:
-        """Create a vector store instance."""
+    def create_adapter(client: Any, embedding_provider: str, collection_name: str) -> VectorStoreAdapter:
+        """
+        Create a vector store adapter.
+        
+        Args:
+            client: Vector store client
+            embedding_provider: Embedding provider name
+            collection_name: Collection name
+            
+        Returns:
+            VectorStoreAdapter instance
+        """
         if settings.VECTOR_STORE_TYPE == "qdrant":
-            # Ensure collection exists logic could be moved here or kept in indexing
-            # For now, let's keep it simple and just return the store wrapper
-            if not client.collection_exists(settings.QDRANT_COLLECTION_NAME):
-                 vector_size = 384 if settings.EMBEDDING_PROVIDER == "fastembed" else 1536
-                 logger.info(f"Creating collection with vector size: {vector_size}")
-                 
-                 client.create_collection(
-                    collection_name=settings.QDRANT_COLLECTION_NAME,
-                    vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
-                )
-
-            return QdrantVectorStore(
-                client=client,
-                collection_name=settings.QDRANT_COLLECTION_NAME,
-                embedding=embeddings,
-            )
+            return QdrantAdapter(client, embedding_provider, collection_name)
         else:
             raise ValueError(f"Unsupported vector store type: {settings.VECTOR_STORE_TYPE}")
+
+    @staticmethod
+    def create_store(embeddings: Embeddings, client: Any) -> QdrantVectorStore:
+        """
+        Create a vector store instance.
+        
+        This method uses the adapter pattern internally to ensure collection exists.
+        """
+        adapter = VectorStoreFactory.create_adapter(
+            client=client,
+            embedding_provider=settings.EMBEDDING_PROVIDER,
+            collection_name=settings.QDRANT_COLLECTION_NAME
+        )
+        return adapter.create_store(embeddings)
+    
+    @staticmethod
+    def ensure_collection_exists(
+        client: Any,
+        collection_name: str,
+        embedding_provider: str
+    ) -> None:
+        """
+        Ensure collection exists with correct configuration.
+        
+        This centralizes collection creation logic that was duplicated.
+        
+        Args:
+            client: Vector store client
+            collection_name: Collection name
+            embedding_provider: Embedding provider name
+        """
+        adapter = VectorStoreFactory.create_adapter(
+            client=client,
+            embedding_provider=embedding_provider,
+            collection_name=collection_name
+        )
+        adapter.ensure_collection_exists()

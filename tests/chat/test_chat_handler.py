@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 from langchain_core.messages import HumanMessage, AIMessage
 
 from datacom_ai.chat.chat_handler import ChatHandler
+from datacom_ai.chat.models import StreamUpdate
 
 
 class TestChatHandler:
@@ -19,14 +20,14 @@ class TestChatHandler:
         history = []
         response = list(chat_handler.stream_response("Hi", history))
 
-        # Should yield tokens and stats tuple
-        content_tokens = [r for r in response if isinstance(r, str)]
-        stats_tuple = [r for r in response if isinstance(r, tuple)]
+        # Should yield StreamUpdate objects
+        content_updates = [r for r in response if r.content]
+        stats_updates = [r for r in response if r.metadata]
 
-        assert len(content_tokens) == 3  # Three content chunks
-        assert "".join(content_tokens) == "Hello there!"
-        assert len(stats_tuple) == 1  # One stats tuple
-        assert stats_tuple[0][0] == "stats"
+        assert len(content_updates) == 3  # Three content chunks
+        assert "".join(u.content for u in content_updates) == "Hello there!"
+        assert len(stats_updates) == 1  # One stats update
+        assert "latency_ms" in stats_updates[0].metadata
 
     def test_stream_response_with_usage_metadata(
         self, chat_handler, mock_llm_client, mock_streaming_chunks_with_usage_metadata
@@ -39,12 +40,12 @@ class TestChatHandler:
         history = []
         response = list(chat_handler.stream_response("Test", history))
 
-        content_tokens = [r for r in response if isinstance(r, str)]
-        stats_tuple = [r for r in response if isinstance(r, tuple)]
+        content_updates = [r for r in response if r.content]
+        stats_updates = [r for r in response if r.metadata]
 
-        assert len(content_tokens) >= 1
-        assert len(stats_tuple) == 1
-        stats_dict = stats_tuple[0][1]
+        assert len(content_updates) >= 1
+        assert len(stats_updates) == 1
+        stats_dict = stats_updates[0].metadata
         assert stats_dict["prompt_tokens"] == 10
         assert stats_dict["completion_tokens"] == 5
 
@@ -58,8 +59,8 @@ class TestChatHandler:
         response = list(chat_handler.stream_response("Test", history))
 
         # Should still yield stats even with empty content
-        stats_tuple = [r for r in response if isinstance(r, tuple)]
-        assert len(stats_tuple) == 1
+        stats_updates = [r for r in response if r.metadata]
+        assert len(stats_updates) == 1
 
     def test_message_persistence(self, chat_handler, mock_llm_client, message_store):
         """Test that messages are persisted correctly."""
@@ -188,8 +189,8 @@ class TestChatHandler:
         history = []
         response = list(chat_handler.stream_response("Test", history))
 
-        content_tokens = [r for r in response if isinstance(r, str)]
-        full_content = "".join(content_tokens)
+        content_updates = [r for r in response if r.content]
+        full_content = "".join(u.content for u in content_updates)
         assert full_content == "Part one and two"
 
         # Verify stored message has full content

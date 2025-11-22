@@ -57,6 +57,25 @@ class Settings:
     # For FastEmbed
     # Default: BAAI/bge-small-en-v1.5
     FASTEMBED_MODEL_NAME: str = os.getenv("FASTEMBED_MODEL_NAME", "BAAI/bge-small-en-v1.5")
+    
+    # Vector size configuration (mapping from embedding provider to vector dimension)
+    EMBEDDING_VECTOR_SIZES: dict[str, int] = {
+        "fastembed": 384,
+        "azure_openai": 1536,
+    }
+    
+    @classmethod
+    def get_vector_size(cls, embedding_provider: str) -> int:
+        """
+        Get vector size for a given embedding provider.
+        
+        Args:
+            embedding_provider: The embedding provider name
+            
+        Returns:
+            Vector dimension size
+        """
+        return cls.EMBEDDING_VECTOR_SIZES.get(embedding_provider, 1536)
 
     @classmethod
     def validate(cls) -> None:

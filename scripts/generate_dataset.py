@@ -1,11 +1,30 @@
+"""
+Generate synthetic Q&A dataset from Arthur Conan Doyle books using DeepEval Synthesizer.
+
+⚠️  NOTE: This script is SLOWER than the fast alternative.
+   For much faster generation, use: scripts/generate_dataset_fast.py
+   (2-5 min vs 15-30+ min for 25 Q&A pairs)
+
+Performance optimizations applied:
+1. Disabled complex evolutions (num_evolutions=0) - evolutions add multiple LLM calls per golden
+2. Using pre-chunked contexts approach for reliable generation
+3. Increased max_concurrent to 10 for parallel processing
+4. Simplified evolution config to only IN_BREADTH (if evolutions enabled)
+5. Manual chunking with RecursiveCharacterTextSplitter for better control
+6. Answer generation enabled by default (set GENERATE_ANSWERS=False to skip for speed)
+
+For faster generation:
+- Keep num_evolutions=0
+- Set GENERATE_ANSWERS=False (skip answers, but dataset won't have expected_output)
+- Or use scripts/generate_dataset_fast.py instead
+
+Usage:
+    uv run scripts/generate_dataset.py
+"""
 import os
 import glob
 import json
-from typing import List, Optional
-from pathlib import Path
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
 from deepeval.synthesizer import Synthesizer
 from deepeval.models import DeepEvalBaseLLM
 from deepeval.dataset import EvaluationDataset
@@ -33,101 +52,116 @@ class AzureOpenAIWrapper(DeepEvalBaseLLM):
     def get_model_name(self):
         return "Azure OpenAI"
 
-def load_documents(data_dir: str, file_pattern: str = "Arthur_Conan_Doyle*.txt") -> List[Document]:
-    """Load and split documents from the specified directory."""
-    documents = []
-    search_path = os.path.join(data_dir, file_pattern)
-    files = glob.glob(search_path)
-    
-    print(f"Found {len(files)} files matching {file_pattern}")
-    
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=512,
-        chunk_overlap=50,
-        length_function=len,
-    )
-
-    for file_path in files:
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                text = f.read()
-                # Create a document for the whole file, or split it
-                # For DeepEval synthesizer, passing chunks is often better
-                chunks = text_splitter.create_documents([text], metadatas=[{"source": file_path}])
-                documents.extend(chunks)
-                print(f"Loaded {len(chunks)} chunks from {os.path.basename(file_path)}")
-        except Exception as e:
-            print(f"Error loading {file_path}: {e}")
-            
-    return documents
-
 def main():
     # Configuration
     DATA_DIR = "data/raw"
     OUTPUT_FILE = "data/processed/synthetic_dataset.json"
+    TARGET_GOLDENS = 25  # Target number of Q&A pairs
     
     # Ensure output directory exists
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
 
-    # 1. Load Documents
-    print("Loading documents...")
-    documents = load_documents(DATA_DIR)
+    # 1. Get document file paths (let DeepEval handle chunking)
+    print("Finding documents...")
+    search_path = os.path.join(DATA_DIR, "Arthur_Conan_Doyle*.txt")
+    document_files = glob.glob(search_path)
     
-    if not documents:
+    if not document_files:
         print("No documents found. Exiting.")
         return
-
-    # Limit documents for testing purposes if needed, or use all
-    # For this task, we'll use a subset of chunks to keep generation time reasonable
-    # or maybe just the first few chunks of each book?
-    # Let's use a subset of 20 chunks for now to demonstrate functionality
-    selected_documents = documents[:20] 
-    print(f"Selected {len(selected_documents)} chunks for generation.")
+    
+    print(f"Found {len(document_files)} files. Using first file for generation.")
+    # Use just the first file to speed things up - adjust if needed
+    document_paths = document_files[:1]
 
     # 2. Setup LLM
     print("Setting up LLM...")
     azure_llm = create_llm_client()
     deepeval_model = AzureOpenAIWrapper(azure_llm)
 
-    # 3. Initialize Synthesizer
+    # 3. Initialize Synthesizer with optimized settings
     print("Initializing Synthesizer...")
+    # Use minimal evolutions - only IN_BREADTH for faster generation
+    # Set num_evolutions=0 to disable evolutions entirely for maximum speed
     evolution_config = EvolutionConfig(
         evolutions={
-            Evolution.REASONING: 0.1,
-            Evolution.MULTICONTEXT: 0.2,
-            Evolution.CONCRETIZING: 0.1,
-            Evolution.CONSTRAINED: 0.1,
-            Evolution.COMPARATIVE: 0.1,
-            Evolution.HYPOTHETICAL: 0.1,
-            Evolution.IN_BREADTH: 0.3,
-        }
+            Evolution.IN_BREADTH: 1.0,  # Only use simple breadth expansion
+        },
+        num_evolutions=0  # Disable evolutions for speed - set to 1-2 if you want some variation
     )
+    
+    # Initialize Synthesizer with optimized settings
+    # Chunking parameters can be set here if supported by your DeepEval version
     synthesizer = Synthesizer(
         model=deepeval_model, 
         evolution_config=evolution_config,
-        max_concurrent=3
+        max_concurrent=10  # Increased concurrency for parallel processing
+        # Note: If your DeepEval version supports it, you can add:
+        # chunk_size=1024,
+        # chunk_overlap=0,
     )
 
-    # 4. Generate Goldens
-    print("Generating synthetic dataset...")
+    # 4. Generate Goldens using pre-chunked contexts
+    # This approach works reliably with DeepEval's current API
+    print(f"Generating {TARGET_GOLDENS} synthetic Q&A pairs...")
+    print("This may take a few minutes...")
+    print(f"Processing document: {document_paths[0]}")
     
-    contexts = [[doc.page_content] for doc in selected_documents]
+    # Check document size
+    doc_size = os.path.getsize(document_paths[0])
+    print(f"Document size: {doc_size:,} bytes")
+    
+    # Read and chunk the document manually for reliable processing
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    
+    with open(document_paths[0], 'r', encoding='utf-8') as f:
+        text = f.read()
+    
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=512,
+        chunk_overlap=50,
+    )
+    chunks = text_splitter.split_text(text)
+    print(f"Created {len(chunks)} chunks from document")
+    
+    # Use chunks to generate goldens - spread across multiple chunks
+    # Calculate how many chunks we need: TARGET_GOLDENS / max_goldens_per_context
+    max_goldens_per_context = 1
+    num_contexts_needed = min(TARGET_GOLDENS, len(chunks))
+    contexts = [[chunk] for chunk in chunks[:num_contexts_needed]]
+    print(f"Using {len(contexts)} contexts to generate goldens...")
+    
+    # Generate expected_output (answers) for the synthetic questions
+    # Set to False to skip answer generation for faster processing
+    GENERATE_ANSWERS = True  # Set to False to skip answers (faster but no expected outputs)
     
     goldens = synthesizer.generate_goldens_from_contexts(
         contexts=contexts,
-        max_goldens_per_context=1, # 1 question per chunk
-        include_expected_output=True
+        max_goldens_per_context=max_goldens_per_context,
+        include_expected_output=GENERATE_ANSWERS  # Skip answers for speed
     )
 
     # 5. Save Dataset
-    print(f"Generated {len(goldens)} goldens. Saving to {OUTPUT_FILE}...")
+    print(f"Generated {len(goldens)} goldens.")
+    
+    if len(goldens) == 0:
+        print("ERROR: No goldens were generated. This might be due to:")
+        print("  - Document too small or empty")
+        print("  - Chunking issues")
+        print("  - Quality filtering rejecting all generated inputs")
+        print("Try increasing the document size or adjusting parameters.")
+        return
+    
+    # Limit to exactly TARGET_GOLDENS if we got more
+    if len(goldens) > TARGET_GOLDENS:
+        print(f"Limiting to {TARGET_GOLDENS} goldens (got {len(goldens)})")
+        goldens = goldens[:TARGET_GOLDENS]
+    
+    print(f"Saving {len(goldens)} goldens to {OUTPUT_FILE}...")
     dataset = EvaluationDataset(goldens=goldens)
     dataset.save_as(file_type='json', directory=os.path.dirname(OUTPUT_FILE))
     
-    # Also save as a simple JSON for inspection if needed, 
-    # but dataset.save_as should handle it.
-    # Let's also manually save to ensure we have the format we want if save_as is tricky
-    
+    # Also save as a simple JSON for inspection
     output_data = []
     for golden in goldens:
         output_data.append({
@@ -140,7 +174,7 @@ def main():
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, indent=2, ensure_ascii=False)
         
-    print("Done!")
+    print(f"Done! Saved {len(goldens)} Q&A pairs to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     main()

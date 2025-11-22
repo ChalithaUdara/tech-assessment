@@ -9,6 +9,22 @@ from datacom_ai.utils.logger import logger
 
 class RetrievalPipeline:
     """Handles retrieval and generation using RAG."""
+    
+    # System prompt for RAG - extracted to avoid duplication
+    SYSTEM_PROMPT = (
+        "You are an assistant for question-answering tasks. "
+        "Use the following pieces of retrieved context to answer "
+        "the question. If you don't know the answer, say that you "
+        "don't know. Use three sentences maximum and keep the "
+        "answer concise.\n\n{context}"
+    )
+    
+    def _create_prompt(self) -> ChatPromptTemplate:
+        """Create the prompt template for RAG."""
+        return ChatPromptTemplate.from_messages([
+            ("system", self.SYSTEM_PROMPT),
+            ("human", "{input}"),
+        ])
 
     def __init__(self, vector_store: VectorStore, llm: BaseChatModel):
         self.vector_store = vector_store
@@ -25,23 +41,7 @@ class RetrievalPipeline:
         logger.info(f"Running RAG for query: {query}")
         
         retriever = self.get_retriever()
-        
-        system_prompt = (
-            "You are an assistant for question-answering tasks. "
-            "Use the following pieces of retrieved context to answer "
-            "the question. If you don't know the answer, say that you "
-            "don't know. Use three sentences maximum and keep the "
-            "answer concise."
-            "\n\n"
-            "{context}"
-        )
-        
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system_prompt),
-                ("human", "{input}"),
-            ]
-        )
+        prompt = self._create_prompt()
         
         question_answer_chain = create_stuff_documents_chain(self.llm, prompt)
         rag_chain = create_retrieval_chain(retriever, question_answer_chain)
@@ -56,23 +56,7 @@ class RetrievalPipeline:
         logger.info(f"Streaming RAG for query: {query}")
         
         retriever = self.get_retriever()
-        
-        system_prompt = (
-            "You are an assistant for question-answering tasks. "
-            "Use the following pieces of retrieved context to answer "
-            "the question. If you don't know the answer, say that you "
-            "don't know. Use three sentences maximum and keep the "
-            "answer concise."
-            "\n\n"
-            "{context}"
-        )
-        
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system_prompt),
-                ("human", "{input}"),
-            ]
-        )
+        prompt = self._create_prompt()
         
         # Stream the response
         # First, retrieve documents
