@@ -34,7 +34,8 @@ def create_llm_client() -> AzureChatOpenAI:
         api_key=settings.OPENAI_API_KEY,
         api_version=settings.AZURE_OPENAI_API_VERSION,
         streaming=True,
-        temperature=0.7,
+        temperature=settings.LLM_TEMPERATURE,
+        stream_usage=True,
     )
 
     logger.success("AzureChatOpenAI client created successfully")

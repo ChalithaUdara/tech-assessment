@@ -20,6 +20,7 @@ class TestLLMClient:
         settings.AZURE_OPENAI_DEPLOYMENT = "test-deployment"
         settings.AZURE_OPENAI_API_VERSION = "2024-02-15-preview"
         settings.MODEL_NAME = "gpt-4o"
+        settings.LLM_TEMPERATURE = 0.7
         settings.validate = Mock()
         return settings
 

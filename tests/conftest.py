@@ -30,7 +30,9 @@ def message_store_small():
 @pytest.fixture
 def chat_handler(mock_llm_client, message_store):
     """Create a chat handler for testing."""
-    return ChatHandler(mock_llm_client, message_store)
+    from datacom_ai.chat.engine import SimpleChatEngine
+    chat_engine = SimpleChatEngine(mock_llm_client)
+    return ChatHandler(chat_engine, message_store)
 
 
 @pytest.fixture

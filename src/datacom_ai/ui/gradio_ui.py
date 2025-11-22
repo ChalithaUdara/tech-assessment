@@ -22,18 +22,19 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
     """
     logger.info("Creating Gradio chat interface")
 
-    def chat_fn(message: str, history: list) -> Generator[list, None, None]:
+    def chat_fn(message: str, history: list, mode: str) -> Generator[list, None, None]:
         """
         Chat function that streams responses.
 
         Args:
             message: User's message
             history: Gradio chat history (may contain dicts or ChatMessage objects)
+            mode: Chat mode ("Default Chat" or "RAG")
 
         Yields:
             Updated history with streaming tokens and metadata
         """
-        logger.info(f"Received user message (length: {len(message)} chars)")
+        logger.info(f"Received user message (length: {len(message)} chars), mode: {mode}")
         logger.debug(f"Processing with {len(history)} messages in history")
 
         # Convert history to dict format for chat_handler (it only needs role/content)
@@ -54,42 +55,70 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
         # Initialize assistant message (main response - always visible)
         assistant_message = gr.ChatMessage(role="assistant", content="")
         history.append(assistant_message)
+        assistant_message_index = len(history) - 1  # Track the index of the assistant message
 
         # Stream the response (pass dict format to handler)
         try:
-            for item in chat_handler.stream_response(message, history_dicts):
-                # Check if this is stats metadata (tuple) or content (string)
-                if isinstance(item, tuple) and len(item) == 2 and item[0] == "stats":
-                    # This is stats metadata - create a separate message with metadata only
-                    # This will appear as a collapsible section below the main message
-                    stats_dict = item[1]
-                    stats_title = (
-                        f"📊 Stats: prompt={stats_dict['prompt_tokens']} "
-                        f"completion={stats_dict['completion_tokens']} "
-                        f"cost=${stats_dict['cost_usd']:.6f} "
-                        f"latency={stats_dict['latency_ms']} ms"
-                    )
-                    logger.debug(f"Received stats metadata: {stats_dict}")
-                    # Create a separate message with metadata for stats
-                    # This will display as a collapsible section below the main message
-                    # Using minimal invisible content to ensure proper rendering
-                    stats_message = gr.ChatMessage(
-                        role="assistant",
-                        content="\u200b",  # Zero-width space - invisible but ensures message renders
-                        metadata={"title": stats_title}
-                    )
-                    # Add stats message after the main response message
-                    history.append(stats_message)
-                elif isinstance(item, str):
-                    # This is content - accumulate it in the main assistant message
-                    assistant_message.content += item
-                    # Update history with the modified message
-                    history[-1] = assistant_message
-                else:
-                    # Fallback for any other format (e.g., error messages)
-                    logger.warning(f"Unexpected item type in stream: {type(item)}")
-                    assistant_message.content += str(item)
-                    history[-1] = assistant_message
+            # Update chat handler engine based on mode
+            # This is a bit of a hack, ideally handler should manage engines or we pass engine to stream_response
+            # For now, we'll assume chat_handler has a method to switch or we pass it
+            
+            # NOTE: We need to update ChatHandler to support switching engines or pass the mode
+            # Let's assume we update ChatHandler.stream_response to accept mode or we set it here
+            
+            for update in chat_handler.stream_response(message, history_dicts, mode=mode):
+                # Handle metadata (stats or citations)
+                if update.metadata:
+                    metadata = update.metadata
+                    
+                    # Handle citations
+                    if "citations" in metadata:
+                        citations = metadata["citations"]
+                        if citations:
+                            # Format citations for metadata
+                            citation_str = "\n".join([f"• {c}" for c in citations])
+                            
+                            # Create a separate message for citations, similar to stats
+                            citations_message = gr.ChatMessage(
+                                role="assistant",
+                                content="\u200b",  # Zero-width space
+                                metadata={"title": "📚 Citations", "log": citation_str}
+                            )
+                            history.append(citations_message)
+                    
+                    # Handle stats
+                    if "prompt_tokens" in metadata or "latency_ms" in metadata:
+                        stats_dict = metadata
+                        stats_title = (
+                            f"📊 Stats: prompt={stats_dict.get('prompt_tokens', 0)} "
+                            f"completion={stats_dict.get('completion_tokens', 0)} "
+                            f"cost=${stats_dict.get('cost_usd', 0.0):.6f} "
+                            f"latency={stats_dict.get('latency_ms', 0)} ms"
+                        )
+                        logger.debug(f"Received stats metadata: {stats_dict}")
+                        
+                        stats_message = gr.ChatMessage(
+                            role="assistant",
+                            content="\u200b",  # Zero-width space
+                            metadata={"title": stats_title}
+                        )
+                        history.append(stats_message)
+                        # Note: assistant_message_index remains unchanged
+                
+                # Handle error
+                elif update.error:
+                    logger.warning(f"Received error in stream: {update.error}")
+                    assistant_message.content += f"\n\n[Error] {update.error}"
+                    # Update the assistant message at its tracked index, not history[-1]
+                    # This preserves the stats message if it was added
+                    history[assistant_message_index] = assistant_message
+                
+                # Handle content
+                elif update.content:
+                    assistant_message.content += update.content
+                    # Update the assistant message at its tracked index, not history[-1]
+                    # This preserves the stats message if it was added
+                    history[assistant_message_index] = assistant_message
                 
                 yield history
         except Exception as e:
@@ -120,20 +149,27 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
         )
 
         with gr.Row():
-            msg = gr.Textbox(
-                label="Message",
-                placeholder="Type your message here...",
-                scale=4,
-                container=False,
-            )
-            submit_btn = gr.Button("Send", variant="primary", scale=1)
-            clear_btn = gr.Button("Clear", scale=1)
+            with gr.Column(scale=4):
+                msg = gr.Textbox(
+                    label="Message",
+                    placeholder="Type your message here...",
+                    container=False,
+                )
+            with gr.Column(scale=1):
+                mode_dropdown = gr.Dropdown(
+                    choices=["Default Chat", "RAG"],
+                    value="Default Chat",
+                    label="Chat Mode",
+                    interactive=True
+                )
+                submit_btn = gr.Button("Send", variant="primary")
+                clear_btn = gr.Button("Clear")
 
         # Event handlers
-        msg.submit(chat_fn, [msg, chatbot], [chatbot], queue=True).then(
+        msg.submit(chat_fn, [msg, chatbot, mode_dropdown], [chatbot], queue=True).then(
             lambda: "", None, [msg], queue=False
         )
-        submit_btn.click(chat_fn, [msg, chatbot], [chatbot], queue=True).then(
+        submit_btn.click(chat_fn, [msg, chatbot, mode_dropdown], [chatbot], queue=True).then(
             lambda: "", None, [msg], queue=False
         )
         clear_btn.click(clear_fn, None, [chatbot], queue=False)

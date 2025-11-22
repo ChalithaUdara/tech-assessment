@@ -5,6 +5,7 @@ import sys
 import os
 
 from datacom_ai.chat.chat_handler import ChatHandler
+from datacom_ai.chat.engine import SimpleChatEngine
 from datacom_ai.chat.message_store import MessageStore
 from datacom_ai.clients.llm_client import create_llm_client
 from datacom_ai.config.settings import settings
@@ -36,8 +37,21 @@ def main():
         message_store = MessageStore()
         logger.success("Message store initialized")
 
+        logger.info("Initializing chat engine")
+        chat_engine = SimpleChatEngine(llm_client)
+        logger.success("Chat engine initialized")
+
+        # Initialize RAG components
+        logger.info("Initializing RAG components")
+        from datacom_ai.rag.pipeline import RAGPipeline
+        from datacom_ai.chat.engine import RAGChatEngine
+        
+        rag_pipeline = RAGPipeline()
+        rag_engine = RAGChatEngine(rag_pipeline)
+        logger.success("RAG components initialized")
+
         logger.info("Initializing chat handler")
-        chat_handler = ChatHandler(llm_client, message_store)
+        chat_handler = ChatHandler(chat_engine, message_store, rag_engine)
         logger.success("Chat handler initialized")
 
         logger.info("Creating Gradio interface")

@@ -1,9 +1,6 @@
 # Datacom AI Technical Assessment
 
 AI platform implementation for retrieval-augmented pipelines, reasoning agents, and self-evaluation loops.
-
-## Task 3.1: Conversational Core (Streaming & Cost Telemetry)
-
 A streaming chat interface with token-level streaming, message persistence, and comprehensive telemetry using LangChain and Gradio.
 
 ## Prerequisites
@@ -47,9 +44,6 @@ python chat.py
 ```
 
 The Gradio interface will launch at `http://localhost:7860`
-
-## Verification
-
 ### Quick Verification Script
 
 Run the verification script to check all components:
@@ -121,4 +115,3 @@ pytest tests/chat/test_chat_handler.py -v
 - ✅ Message persistence (last 10 messages)
 - ✅ Telemetry: prompt tokens, completion tokens, cost (USD), latency
 - ✅ Real-time metrics display after each response
-
