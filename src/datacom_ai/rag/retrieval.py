@@ -8,6 +8,8 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from datacom_ai.config.settings import settings
 from datacom_ai.utils.logger import logger
+from datacom_ai.utils.structured_logging import log_rag_query, log_rag_retrieval
+import time
 
 class RetrievalPipeline:
     """Handles retrieval and generation using RAG."""
@@ -88,12 +90,41 @@ class RetrievalPipeline:
         if conversation_history:
             logger.debug(f"Including {len(conversation_history)} messages from conversation history")
         
+        # Log RAG query
+        log_rag_query(query=query, k_value=self.k, conversation_history_length=len(conversation_history) if conversation_history else 0)
+        
         retriever = self.get_retriever()
         prompt = self._create_prompt()
         
         # Stream the response
-        # First, retrieve documents
+        # First, retrieve documents with timing
+        retrieval_start = time.time()
         docs = retriever.invoke(query)
+        retrieval_latency_ms = int((time.time() - retrieval_start) * 1000)
+        
+        # Extract similarity scores if available
+        retrieval_scores = []
+        if docs:
+            for doc in docs:
+                # Try to extract score from metadata
+                if hasattr(doc, "metadata") and doc.metadata:
+                    score = doc.metadata.get("score") or doc.metadata.get("similarity_score")
+                    if score is not None:
+                        retrieval_scores.append(float(score))
+                # If no score in metadata, try to get from the document object itself
+                elif hasattr(doc, "score"):
+                    retrieval_scores.append(float(doc.score))
+        
+        # Log retrieval metrics
+        log_rag_retrieval(
+            query=query,
+            k_value=self.k,
+            retrieved_doc_count=len(docs),
+            retrieval_scores=retrieval_scores if retrieval_scores else None,
+            retrieval_latency_ms=retrieval_latency_ms,
+            success=True
+        )
+        
         yield {"context": docs}
         
         # Then generate answer using the retrieved documents

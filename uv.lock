@@ -819,9 +819,11 @@ source = { editable = "." }
 dependencies = [
     { name = "amadeus" },
     { name = "chromadb" },
+    { name = "deepeval" },
     { name = "fastembed", version = "0.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "fastembed", version = "0.7.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
     { name = "googlemaps" },
+    { name = "gradio" },
     { name = "langchain" },
     { name = "langchain-community" },
     { name = "langchain-google-community" },
@@ -833,6 +835,8 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "qdrant-client", version = "1.12.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "qdrant-client", version = "1.16.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "ragas" },
+    { name = "rapidfuzz" },
     { name = "requests" },
     { name = "tqdm" },
 ]
@@ -844,29 +848,16 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
-eval = [
-    { name = "deepeval" },
-    { name = "ragas" },
-    { name = "rapidfuzz" },
-]
-ui = [
-    { name = "gradio" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "amadeus", specifier = ">=9.0.0" },
     { name = "black", marker = "extra == 'dev'" },
     { name = "chromadb", specifier = ">=1.3.5" },
-    { name = "deepeval", marker = "extra == 'eval'", specifier = ">=0.1.0" },
+    { name = "deepeval", specifier = ">=0.1.0" },
     { name = "fastembed", specifier = ">=0.2.0" },
     { name = "googlemaps", specifier = ">=4.10.0" },
-    { name = "gradio", marker = "extra == 'ui'", specifier = ">=4.0.0" },
+    { name = "gradio", specifier = ">=4.0.0" },
     { name = "langchain", specifier = ">=0.3.0" },
     { name = "langchain-community", specifier = ">=0.0.10" },
     { name = "langchain-google-community", specifier = ">=1.0.0" },
@@ -879,16 +870,13 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "qdrant-client", specifier = ">=1.9.0" },
-    { name = "ragas", marker = "extra == 'eval'", specifier = ">=0.1.0" },
-    { name = "rapidfuzz", marker = "extra == 'eval'", specifier = ">=3.0.0" },
+    { name = "ragas", specifier = ">=0.1.0" },
+    { name = "rapidfuzz", specifier = ">=3.0.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "tqdm", specifier = ">=4.66.0" },
 ]
-provides-extras = ["dev", "ui", "eval"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.0.1" }]
+provides-extras = ["dev"]
 
 [[package]]
 name = "datasets"

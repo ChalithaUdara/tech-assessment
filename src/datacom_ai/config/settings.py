@@ -38,7 +38,7 @@ class Settings:
     # RAG Configuration
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
-    RETRIEVER_K: int = int(os.getenv("RETRIEVER_K", "4"))  # Number of documents to retrieve
+    RETRIEVER_K: int = int(os.getenv("RETRIEVER_K", "5"))  # Number of documents to retrieve
     
     # Text Splitter Configuration
     # Options: "recursive", "character"
@@ -64,6 +64,15 @@ class Settings:
         "fastembed": 384,
         "azure_openai": 1536,
     }
+    
+    # Logging Configuration
+    LOG_FORMAT: str = os.getenv("LOG_FORMAT", "both")  # Options: "json", "text", "both"
+    LOG_JSON_FILE: str = os.getenv("LOG_JSON_FILE", "logs/chat.jsonl")
+    ENABLE_CORRELATION_IDS: bool = os.getenv("ENABLE_CORRELATION_IDS", "true").lower() == "true"
+    
+    # RAG Evaluation Configuration
+    ENABLE_RAG_EVALUATION: bool = os.getenv("ENABLE_RAG_EVALUATION", "true").lower() == "true"
+    RAG_EVALUATION_THRESHOLD: float = float(os.getenv("RAG_EVALUATION_THRESHOLD", "0.5"))
     
     @classmethod
     def get_vector_size(cls, embedding_provider: str) -> int:

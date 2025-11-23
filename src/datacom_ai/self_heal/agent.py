@@ -1,5 +1,6 @@
 import subprocess
 import os
+import time
 from typing import TypedDict, Literal, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -7,6 +8,7 @@ from langchain_openai import AzureChatOpenAI
 from langgraph.graph import StateGraph, END
 from datacom_ai.utils.logger import logger
 from datacom_ai.clients.llm_client import create_llm_client
+from datacom_ai.utils.structured_logging import log_agent_execution
 
 # 1. Defining the Agent State
 class AgentState(TypedDict):
@@ -20,7 +22,18 @@ class AgentState(TypedDict):
     thought: str
 
 class SelfHealingAgent:
-    def __init__(self, llm_client: Optional[AzureChatOpenAI] = None):
+    def __init__(
+        self, 
+        llm_client: Optional[AzureChatOpenAI] = None
+    ):
+        """
+        Initialize the Self-Healing Coding Agent.
+        
+        Args:
+            llm_client: Optional AzureChatOpenAI client. If not provided, will be created
+                       using create_llm_client(). This allows for dependency injection
+                       and better testability.
+        """
         if llm_client is None:
             self.llm = create_llm_client()
         else:
@@ -213,6 +226,15 @@ Ensure you fix the specific errors reported."""
         return "retry"
 
     def stream(self, task_prompt: str):
+        # Track execution metrics for analytics
+        execution_start = time.time()
+        steps_executed = []
+        steps_succeeded = 0
+        steps_failed = 0
+        failure_step = None
+        failure_type = None
+        overall_status = "success"
+        
         inputs = {
             "task_prompt": task_prompt,
             "retry_count": 0,
@@ -223,24 +245,91 @@ Ensure you fix the specific errors reported."""
         
         yield f"[SYSTEM] Starting task: {task_prompt}"
         
-        for event in self.graph.stream(inputs):
-            for key, value in event.items():
-                node_name = key.upper()
-                
-                # Log thought if present
-                if "thought" in value and value["thought"]:
-                    yield f"[{node_name}] Thought: {value['thought']}"
-                
-                # Log status message
-                if "status_message" in value:
-                    yield f"[{node_name}] {value['status_message']}"
-                
-                # Log output
-                if "test_output" in value and value["test_output"]:
-                    # Yield output for visibility, maybe truncated
-                    yield f"[{node_name}] Output:\n{value['test_output'][:500]}..."
+        try:
+            for event in self.graph.stream(inputs):
+                for key, value in event.items():
+                    node_name = key.upper()
+                    
+                    # Track steps executed
+                    if key not in steps_executed:
+                        steps_executed.append(key)
+                    
+                    # Check step status
+                    status_message = value.get("status_message", "")
+                    if "error" in status_message.lower() or "failed" in status_message.lower():
+                        steps_failed += 1
+                        failure_step = key
+                        failure_type = f"agent_{key}_error"
+                    elif "passed" in status_message.lower() or "success" in status_message.lower():
+                        steps_succeeded += 1
+                    else:
+                        # Default to success if no explicit failure
+                        steps_succeeded += 1
+                    
+                    # Log thought if present
+                    if "thought" in value and value["thought"]:
+                        yield f"[{node_name}] Thought: {value['thought']}"
+                    
+                    # Log status message
+                    if "status_message" in value:
+                        yield f"[{node_name}] {value['status_message']}"
+                    
+                    # Log output
+                    if "test_output" in value and value["test_output"]:
+                        # Yield output for visibility, maybe truncated
+                        yield f"[{node_name}] Output:\n{value['test_output'][:500]}..."
 
-                # Log generated code
-                if "current_code" in value and value["current_code"]:
-                    yield f"[{node_name}] Generated Code:\n```python\n{value['current_code']}\n```"
+                    # Log generated code
+                    if "current_code" in value and value["current_code"]:
+                        yield f"[{node_name}] Generated Code:\n```python\n{value['current_code']}\n```"
+            
+            # Determine overall status based on final state
+            if steps_failed > 0:
+                overall_status = "failure"
+            elif len(steps_executed) > 0 and steps_succeeded == len(steps_executed):
+                overall_status = "success"
+            else:
+                overall_status = "partial"
+            
+            # Log agent execution summary after completion
+            total_execution_time_ms = int((time.time() - execution_start) * 1000)
+            log_agent_execution(
+                agent_type="SelfHealingAgent",
+                overall_status=overall_status,
+                total_execution_time_ms=total_execution_time_ms,
+                steps_executed=steps_executed,
+                steps_succeeded=steps_succeeded,
+                steps_failed=steps_failed,
+                failure_step=failure_step,
+                failure_type=failure_type
+            )
+            
+        except Exception as e:
+            # Log failure and re-raise
+            overall_status = "failure"
+            total_execution_time_ms = int((time.time() - execution_start) * 1000)
+            
+            # Try to determine which step failed based on last executed step
+            if steps_executed:
+                failure_step = steps_executed[-1]
+                failure_type = f"agent_{failure_step}_error"
+            else:
+                failure_step = "unknown"
+                failure_type = "agent_execution_error"
+            
+            steps_failed = 1
+            
+            log_agent_execution(
+                agent_type="SelfHealingAgent",
+                overall_status=overall_status,
+                total_execution_time_ms=total_execution_time_ms,
+                steps_executed=steps_executed,
+                steps_succeeded=steps_succeeded,
+                steps_failed=steps_failed,
+                failure_step=failure_step,
+                failure_type=failure_type,
+                error_message=str(e)
+            )
+            
+            raise
 

@@ -21,6 +21,10 @@ dependencies = [
     "amadeus>=9.0.0",
     "googlemaps>=4.10.0",
     "langchain-google-community>=1.0.0",
+    "gradio>=4.0.0",
+    "deepeval>=0.1.0",
+    "ragas>=0.1.0",
+    "rapidfuzz>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -29,14 +33,6 @@ dev = [
     "pytest-cov",
     "black",
     "ruff",
-]
-ui = [
-    "gradio>=4.0.0",
-]
-eval = [
-    "deepeval>=0.1.0",
-    "ragas>=0.1.0",
-    "rapidfuzz>=3.0.0",
 ]
 
 [build-system]
@@ -48,9 +44,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-
-[dependency-groups]
-dev = [
-    "pytest>=9.0.1",
-]
 

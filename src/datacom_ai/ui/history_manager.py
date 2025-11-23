@@ -86,3 +86,4 @@ class GradioHistoryManager:
         """Get the current history."""
         return self.history
 
+
