@@ -1,10 +1,12 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from langchain_core.vectorstores import VectorStore
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 
+from datacom_ai.config.settings import settings
 from datacom_ai.utils.logger import logger
 
 class RetrievalPipeline:
@@ -26,12 +28,37 @@ class RetrievalPipeline:
             ("human", "{input}"),
         ])
 
-    def __init__(self, vector_store: VectorStore, llm: BaseChatModel):
+    def __init__(
+        self, 
+        vector_store: VectorStore, 
+        llm: BaseChatModel,
+        k: Optional[int] = None
+    ):
+        """
+        Initialize the retrieval pipeline.
+
+        Args:
+            vector_store: Vector store for document retrieval
+            llm: Language model for generation
+            k: Number of documents to retrieve (defaults to settings.RETRIEVER_K or 4)
+        """
         self.vector_store = vector_store
         self.llm = llm
+        # Use settings value if available, otherwise default to 4
+        self.k = k or getattr(settings, 'RETRIEVER_K', None) or 4
 
-    def get_retriever(self, k: int = 4):
-        """Get the retriever from the vector store."""
+    def get_retriever(self, k: Optional[int] = None):
+        """
+        Get the retriever from the vector store.
+
+        Args:
+            k: Optional override for number of documents to retrieve.
+               If not provided, uses the instance's k value.
+
+        Returns:
+            Configured retriever
+        """
+        k = k or self.k
         return self.vector_store.as_retriever(search_kwargs={"k": k})
 
     def run(self, query: str) -> Dict[str, Any]:
@@ -49,11 +76,17 @@ class RetrievalPipeline:
         response = rag_chain.invoke({"input": query})
         return response
 
-    def stream(self, query: str):
+    def stream(self, query: str, conversation_history: Optional[List[BaseMessage]] = None):
         """
         Stream the RAG pipeline response.
+        
+        Args:
+            query: The current query/question
+            conversation_history: Optional conversation history to include in context
         """
         logger.info(f"Streaming RAG for query: {query}")
+        if conversation_history:
+            logger.debug(f"Including {len(conversation_history)} messages from conversation history")
         
         retriever = self.get_retriever()
         prompt = self._create_prompt()
@@ -64,7 +97,6 @@ class RetrievalPipeline:
         yield {"context": docs}
         
         # Then generate answer using the retrieved documents
-        # Then generate answer using the retrieved documents
         # We manually construct the chain to ensure we get the raw LLM output (with usage metadata)
         # instead of just the string content which create_stuff_documents_chain might return
         
@@ -73,8 +105,23 @@ class RetrievalPipeline:
             
         formatted_context = format_docs(docs)
         
-        # Create messages directly
-        messages = prompt.format_messages(context=formatted_context, input=query)
+        # Build messages with conversation history if provided
+        messages = []
+        
+        # Add system prompt with context
+        # Format the system prompt with the retrieved context
+        system_content = self.SYSTEM_PROMPT.format(context=formatted_context)
+        messages.append(SystemMessage(content=system_content))
+        
+        # Add conversation history (excluding the last message which is the current query)
+        if conversation_history:
+            # Exclude the last message as it's the current query
+            history_messages = conversation_history[:-1] if len(conversation_history) > 1 else []
+            for msg in history_messages:
+                messages.append(msg)
+        
+        # Add the current query
+        messages.append(HumanMessage(content=query))
         
         # Stream directly from LLM
         for chunk in self.llm.stream(messages):

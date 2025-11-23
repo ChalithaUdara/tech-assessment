@@ -1,5 +1,5 @@
 import json
-from typing import Annotated, List, TypedDict, Union, Literal
+from typing import Annotated, List, TypedDict, Union, Literal, Optional
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import AzureChatOpenAI
@@ -16,18 +16,25 @@ class AgentState(TypedDict):
 
 # Define the Agent
 class PlanningAgent:
-    def __init__(self, model_name: str = "gpt-4o"):
+    def __init__(self, llm_client: Optional[AzureChatOpenAI] = None):
+        """
+        Initialize the Planning Agent.
+        
+        Args:
+            llm_client: Optional AzureChatOpenAI client. If not provided, will be created
+                       using create_llm_client(). This allows for dependency injection
+                       and better testability.
+        """
         self.tools = get_tools()
-        # Initialize Azure OpenAI client
-        # Note: In a real app, we'd inject this or load config properly
-        import os
-        self.base_llm = AzureChatOpenAI(
-            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
-            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            api_key=os.getenv("OPENAI_API_KEY"),
-            temperature=0,
-        )
+        
+        # Use dependency injection for LLM client
+        if llm_client is None:
+            from datacom_ai.clients.llm_client import create_llm_client
+            self.base_llm = create_llm_client()
+        else:
+            self.base_llm = llm_client
+        
+        # Create a version with tools bound
         self.llm = self.base_llm.bind_tools(self.tools)
         
         self.graph = self._build_graph()
