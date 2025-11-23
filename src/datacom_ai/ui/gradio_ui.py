@@ -9,7 +9,7 @@ from datacom_ai.chat.models import ChatMode
 from datacom_ai.ui.history_manager import GradioHistoryManager
 from datacom_ai.utils.logger import logger
 
-from gradio import Blocks
+
 
 
 def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
@@ -120,55 +120,78 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
             """
         )
 
-        chatbot = gr.Chatbot(
-            type="messages",
-            label="Conversation",
-            height=500,
-        )
-
-        with gr.Row():
-            with gr.Column(scale=4):
-                msg = gr.Textbox(
-                    label="Message",
-                    placeholder="Type your message here...",
-                    container=False,
+        with gr.Tabs():
+            with gr.Tab("Chat"):
+                chatbot = gr.Chatbot(
+                    type="messages",
+                    label="Conversation",
+                    height=500,
                 )
-            with gr.Column(scale=1):
-                mode_dropdown = gr.Dropdown(
-                    choices=[mode.value for mode in ChatMode],
-                    value=ChatMode.DEFAULT.value,
-                    label="Chat Mode",
-                    interactive=True
+
+                with gr.Row():
+                    with gr.Column(scale=4):
+                        msg = gr.Textbox(
+                            label="Message",
+                            placeholder="Type your message here...",
+                            container=False,
+                        )
+                    with gr.Column(scale=1):
+                        mode_dropdown = gr.Dropdown(
+                            choices=[mode.value for mode in ChatMode],
+                            value=ChatMode.DEFAULT.value,
+                            label="Chat Mode",
+                            interactive=True
+                        )
+                        submit_btn = gr.Button("Send", variant="primary")
+                        clear_btn = gr.Button("Clear")
+
+                # Event handlers
+                msg.submit(chat_fn, [msg, chatbot, mode_dropdown], [chatbot], queue=True).then(
+                    lambda: "", None, [msg], queue=False
                 )
-                submit_btn = gr.Button("Send", variant="primary")
-                clear_btn = gr.Button("Clear")
+                submit_btn.click(chat_fn, [msg, chatbot, mode_dropdown], [chatbot], queue=True).then(
+                    lambda: "", None, [msg], queue=False
+                )
+                clear_btn.click(clear_fn, None, [chatbot], queue=False)
+                
+                # Clear chat history when mode changes
+                def clear_on_mode_change(mode: str) -> list:
+                    """Clear the chat history when switching modes."""
+                    logger.info(f"Mode changed to {mode}, clearing chat history")
+                    chat_handler.clear_history()
+                    return []
+                
+                mode_dropdown.change(clear_on_mode_change, [mode_dropdown], [chatbot], queue=False)
 
-        # Event handlers
-        msg.submit(chat_fn, [msg, chatbot, mode_dropdown], [chatbot], queue=True).then(
-            lambda: "", None, [msg], queue=False
-        )
-        submit_btn.click(chat_fn, [msg, chatbot, mode_dropdown], [chatbot], queue=True).then(
-            lambda: "", None, [msg], queue=False
-        )
-        clear_btn.click(clear_fn, None, [chatbot], queue=False)
-        
-        # Clear chat history when mode changes
-        def clear_on_mode_change(mode: str) -> list:
-            """Clear the chat history when switching modes."""
-            logger.info(f"Mode changed to {mode}, clearing chat history")
-            chat_handler.clear_history()
-            return []
-        
-        mode_dropdown.change(clear_on_mode_change, [mode_dropdown], [chatbot], queue=False)
+                gr.Markdown(
+                    """
+                    ### Features
+                    - **Token-level streaming**: See responses appear in real-time
+                    - **Telemetry metrics**: View token usage, cost, and latency after each response
+                    - **Message persistence**: Last 10 messages are maintained in conversation history
+                    """
+                )
 
-        gr.Markdown(
-            """
-            ### Features
-            - **Token-level streaming**: See responses appear in real-time
-            - **Telemetry metrics**: View token usage, cost, and latency after each response
-            - **Message persistence**: Last 10 messages are maintained in conversation history
-            """
-        )
+            with gr.Tab("Coding Agent"):
+                gr.Markdown("### Self-Healing Code Assistant")
+                gr.Markdown("Enter a natural language coding task (e.g., 'Write quicksort in Python'). The agent will generate code, run tests, and self-heal if errors occur.")
+                
+                with gr.Row():
+                    agent_input = gr.Textbox(label="Task Prompt", placeholder="e.g. Write a Python function to calculate fibonacci sequence")
+                    agent_run_btn = gr.Button("Run Agent", variant="primary")
+                
+                agent_output = gr.Textbox(label="Agent Logs", interactive=False, lines=20)
+
+                def run_coding_agent(task: str):
+                    from datacom_ai.self_heal.agent import SelfHealingAgent
+                    agent = SelfHealingAgent()
+                    logs = ""
+                    yield logs
+                    for update in agent.stream(task):
+                        logs += update + "\n"
+                        yield logs
+
+                agent_run_btn.click(run_coding_agent, [agent_input], [agent_output])
 
     return demo
 
