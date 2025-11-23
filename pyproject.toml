@@ -12,7 +12,7 @@ dependencies = [
     "tqdm>=4.66.0",
     "langchain-qdrant>=0.1.0",
     "qdrant-client>=1.9.0",
-    "langchain==0.3.0",
+    "langchain>=0.3.0",
     "langchain-community>=0.0.10",
     "fastembed>=0.2.0",
     "onnxruntime>=1.20.0",
@@ -31,6 +31,8 @@ ui = [
 ]
 eval = [
     "deepeval>=0.1.0",
+    "ragas>=0.1.0",
+    "rapidfuzz>=3.0.0",
 ]
 
 [build-system]
