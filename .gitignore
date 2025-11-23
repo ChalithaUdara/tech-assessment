@@ -50,6 +50,7 @@ models/**
 data/**
 !data/
 !data/.gitkeep
+!data/processed/synthetic_dataset_ragas.json
 
 # Database files
 *.db
