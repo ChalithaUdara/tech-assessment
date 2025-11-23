@@ -7,6 +7,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_openai import AzureChatOpenAI
 
 from datacom_ai.chat.models import StreamUpdate
+from datacom_ai.chat.chunk_parsers import RAGChunkParser
 from datacom_ai.telemetry.metrics import TelemetryMetrics
 from datacom_ai.utils.logger import logger
 
@@ -172,9 +173,12 @@ class RAGChatEngine(BaseChatEngine):
     ) -> Generator[StreamUpdate, None, None]:
         """
         Stream a response using the RAG pipeline.
+        
+        Maintains conversation history by passing all messages to the RAG pipeline,
+        which includes them in the context for generation while using the last message
+        as the retrieval query.
         """
-        # Get the last user message as query
-        # Ideally we should condense history into a standalone query, but for baseline we use last msg
+        # Get the last user message as query for retrieval
         last_message = messages[-1]
         if isinstance(last_message, HumanMessage):
             query = last_message.content
@@ -182,8 +186,13 @@ class RAGChatEngine(BaseChatEngine):
             # Fallback or handle error
             query = str(last_message.content)
 
-        # Stream tokens from the RAG pipeline
-        generator = self.rag_pipeline.stream(query)
+        # Pass full conversation history to RAG pipeline for context
+        # The pipeline will use the last message for retrieval but include
+        # all previous messages in the generation context
+        conversation_history = messages if len(messages) > 1 else None
+        
+        # Stream tokens from the RAG pipeline with conversation history
+        generator = self.rag_pipeline.stream(query, conversation_history)
         yield from self._stream_with_metrics(generator, "RAGChatEngine")
 
     def _process_chunk(self, chunk, metrics: TelemetryMetrics) -> StreamUpdate | None:
@@ -197,32 +206,78 @@ class RAGChatEngine(BaseChatEngine):
         Returns:
             StreamUpdate with content or metadata, or None if chunk should be skipped
         """
-        if isinstance(chunk, dict):
-            if "context" in chunk:
-                # Process citations
-                docs = chunk["context"]
-                citations = []
-                for doc in docs:
-                    # Extract relevant metadata
-                    source = doc.metadata.get("source", "Unknown")
-                    page = doc.metadata.get("page", "N/A")
-                    citations.append(f"Source: {source}, Page: {page}")
+        return RAGChunkParser.parse(chunk, metrics)
 
-                # Yield citations as metadata
-                return StreamUpdate(metadata={"citations": citations})
 
-            elif "answer" in chunk:
-                return StreamUpdate(content=chunk["answer"])
+class PlanningAgentChatEngine(BaseChatEngine):
+    """
+    Chat engine wrapper for PlanningAgent to follow ChatEngine protocol.
+    
+    This adapter wraps PlanningAgent to make it compatible with the ChatEngine
+    interface, allowing it to use the shared metrics tracking from BaseChatEngine.
+    """
 
-            elif "usage" in chunk:
-                usage_metadata = chunk["usage"]
-                prompt_tokens = usage_metadata.get("input_tokens", 0)
-                completion_tokens = usage_metadata.get("output_tokens", 0)
-                total_tokens = usage_metadata.get("total_tokens", 0)
-                metrics.set_token_usage(prompt_tokens, completion_tokens, total_tokens)
-                return None  # Usage metadata is tracked, no need to yield
-        else:
-            # Fallback if pipeline yields strings directly (legacy support)
+    def __init__(self, planning_agent):
+        """
+        Initialize the PlanningAgent chat engine.
+
+        Args:
+            planning_agent: Configured PlanningAgent instance
+        """
+        self.planning_agent = planning_agent
+
+    def stream(
+        self, messages: List[BaseMessage]
+    ) -> Generator[StreamUpdate, None, None]:
+        """
+        Stream a response using the PlanningAgent.
+        
+        Converts PlanningAgent's stream format to our standard StreamUpdate format.
+        """
+        # Convert PlanningAgent stream format to a generator that BaseChatEngine can process
+        def agent_generator():
+            """Generator that converts PlanningAgent chunks to a format _process_chunk can handle."""
+            for chunk in self.planning_agent.stream(messages):
+                if isinstance(chunk, dict):
+                    # Yield content if present
+                    if "content" in chunk:
+                        yield chunk["content"]
+                    # Yield usage metadata separately for processing
+                    if "metadata" in chunk and "usage" in chunk["metadata"]:
+                        yield {"usage": chunk["metadata"]["usage"]}
+                else:
+                    # Fallback for string chunks
+                    yield str(chunk)
+        
+        yield from self._stream_with_metrics(agent_generator(), "PlanningAgentChatEngine")
+
+    def _process_chunk(self, chunk, metrics: TelemetryMetrics) -> StreamUpdate | None:
+        """
+        Process a chunk from the PlanningAgent stream.
+
+        Args:
+            chunk: PlanningAgent chunk (string content or dict with usage metadata)
+            metrics: TelemetryMetrics instance to update
+
+        Returns:
+            StreamUpdate with content, or None if chunk should be skipped
+        """
+        # Handle usage metadata
+        if isinstance(chunk, dict) and "usage" in chunk:
+            usage = chunk["usage"]
+            metrics.set_token_usage(
+                usage.get("input_tokens", 0),
+                usage.get("output_tokens", 0),
+                usage.get("total_tokens", 0)
+            )
+            return None  # Usage metadata is tracked, no need to yield
+        
+        # Handle content (string)
+        if isinstance(chunk, str) and chunk:
+            return StreamUpdate(content=chunk)
+        
+        # Fallback for other types
+        if chunk:
             return StreamUpdate(content=str(chunk))
-
+        
         return None

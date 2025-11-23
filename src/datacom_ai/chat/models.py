@@ -1,7 +1,23 @@
 """Data models for the chat application."""
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Dict, List, Optional
+
+
+class ChatMode(str, Enum):
+    """
+    Chat mode enumeration.
+    
+    Defines the available chat modes for the application.
+    """
+    DEFAULT = "Default Chat"
+    RAG = "RAG"
+    PLANNING_AGENT = "Planning Agent"
+    
+    def __str__(self) -> str:
+        """Return the string value of the enum."""
+        return self.value
 
 
 @dataclass

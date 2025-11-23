@@ -5,6 +5,8 @@ from typing import Generator, Union, Tuple, Dict, Any
 import gradio as gr
 
 from datacom_ai.chat.chat_handler import ChatHandler
+from datacom_ai.chat.models import ChatMode
+from datacom_ai.ui.history_manager import GradioHistoryManager
 from datacom_ai.utils.logger import logger
 
 from gradio import Blocks
@@ -49,23 +51,13 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
                     "content": getattr(msg, "content", "")
                 })
 
-        # Add user message to history
-        history.append(gr.ChatMessage(role="user", content=message))
-
-        # Initialize assistant message (main response - always visible)
-        assistant_message = gr.ChatMessage(role="assistant", content="")
-        history.append(assistant_message)
-        assistant_message_index = len(history) - 1  # Track the index of the assistant message
+        # Use history manager for cleaner state management
+        history_manager = GradioHistoryManager(history)
+        history_manager.add_user_message(message)
+        history_manager.initialize_assistant_message()
 
         # Stream the response (pass dict format to handler)
         try:
-            # Update chat handler engine based on mode
-            # This is a bit of a hack, ideally handler should manage engines or we pass engine to stream_response
-            # For now, we'll assume chat_handler has a method to switch or we pass it
-            
-            # NOTE: We need to update ChatHandler to support switching engines or pass the mode
-            # Let's assume we update ChatHandler.stream_response to accept mode or we set it here
-            
             for update in chat_handler.stream_response(message, history_dicts, mode=mode):
                 # Handle metadata (stats or citations)
                 if update.metadata:
@@ -77,14 +69,10 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
                         if citations:
                             # Format citations for metadata
                             citation_str = "\n".join([f"• {c}" for c in citations])
-                            
-                            # Create a separate message for citations, similar to stats
-                            citations_message = gr.ChatMessage(
-                                role="assistant",
-                                content="\u200b",  # Zero-width space
-                                metadata={"title": "📚 Citations", "log": citation_str}
+                            history_manager.add_metadata_message(
+                                title="📚 Citations",
+                                log=citation_str
                             )
-                            history.append(citations_message)
                     
                     # Handle stats
                     if "prompt_tokens" in metadata or "latency_ms" in metadata:
@@ -96,31 +84,21 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
                             f"latency={stats_dict.get('latency_ms', 0)} ms"
                         )
                         logger.debug(f"Received stats metadata: {stats_dict}")
-                        
-                        stats_message = gr.ChatMessage(
-                            role="assistant",
-                            content="\u200b",  # Zero-width space
-                            metadata={"title": stats_title}
-                        )
-                        history.append(stats_message)
-                        # Note: assistant_message_index remains unchanged
+                        history_manager.add_metadata_message(title=stats_title)
                 
                 # Handle error
                 elif update.error:
                     logger.warning(f"Received error in stream: {update.error}")
-                    assistant_message.content += f"\n\n[Error] {update.error}"
-                    # Update the assistant message at its tracked index, not history[-1]
-                    # This preserves the stats message if it was added
-                    history[assistant_message_index] = assistant_message
+                    current_content = history_manager.history[history_manager.assistant_message_index].content
+                    history_manager.update_assistant_content(
+                        f"{current_content}\n\n[Error] {update.error}"
+                    )
                 
                 # Handle content
                 elif update.content:
-                    assistant_message.content += update.content
-                    # Update the assistant message at its tracked index, not history[-1]
-                    # This preserves the stats message if it was added
-                    history[assistant_message_index] = assistant_message
+                    history_manager.append_to_assistant_content(update.content)
                 
-                yield history
+                yield history_manager.get_history()
         except Exception as e:
             logger.error(f"Error in chat_fn: {e}")
             logger.exception("Exception during chat function execution")
@@ -157,8 +135,8 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
                 )
             with gr.Column(scale=1):
                 mode_dropdown = gr.Dropdown(
-                    choices=["Default Chat", "RAG", "Planning Agent"],
-                    value="Default Chat",
+                    choices=[mode.value for mode in ChatMode],
+                    value=ChatMode.DEFAULT.value,
                     label="Chat Mode",
                     interactive=True
                 )
@@ -173,6 +151,15 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
             lambda: "", None, [msg], queue=False
         )
         clear_btn.click(clear_fn, None, [chatbot], queue=False)
+        
+        # Clear chat history when mode changes
+        def clear_on_mode_change(mode: str) -> list:
+            """Clear the chat history when switching modes."""
+            logger.info(f"Mode changed to {mode}, clearing chat history")
+            chat_handler.clear_history()
+            return []
+        
+        mode_dropdown.change(clear_on_mode_change, [mode_dropdown], [chatbot], queue=False)
 
         gr.Markdown(
             """

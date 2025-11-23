@@ -53,8 +53,27 @@ def main():
         rag_engine = RAGChatEngine(rag_pipeline)
         logger.success("RAG components initialized")
 
+        # Initialize Planning Agent components
+        logger.info("Initializing Planning Agent components")
+        try:
+            from datacom_ai.agent.planning_agent import PlanningAgent
+            from datacom_ai.chat.engine import PlanningAgentChatEngine
+            
+            planning_agent = PlanningAgent(llm_client=llm_client)
+            planning_engine = PlanningAgentChatEngine(planning_agent)
+            logger.success("Planning Agent components initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Planning Agent: {e}")
+            logger.warning("Planning Agent mode will not be available")
+            planning_engine = None
+
         logger.info("Initializing chat handler")
-        chat_handler = ChatHandler(chat_engine, message_store, rag_engine)
+        chat_handler = ChatHandler(
+            chat_engine=chat_engine,
+            message_store=message_store,
+            rag_engine=rag_engine,
+            planning_engine=planning_engine
+        )
         logger.success("Chat handler initialized")
 
         logger.info("Creating Gradio interface")

@@ -38,6 +38,7 @@ class Settings:
     # RAG Configuration
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
+    RETRIEVER_K: int = int(os.getenv("RETRIEVER_K", "4"))  # Number of documents to retrieve
     
     # Text Splitter Configuration
     # Options: "recursive", "character"
