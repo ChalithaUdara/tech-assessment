@@ -28,6 +28,15 @@ class ChatHandler:
         self.chat_engine = chat_engine
         self.message_store = message_store
         self.rag_engine = rag_engine
+        
+        # Initialize Planning Agent
+        # In a real app, this should be injected or configured properly
+        try:
+            from datacom_ai.agent.planning_agent import PlanningAgent
+            self.planning_agent = PlanningAgent()
+        except Exception as e:
+            logger.error(f"Failed to initialize PlanningAgent: {e}")
+            self.planning_agent = None
 
     def stream_response(
         self, user_message: str, history: List[Dict[str, Any]], mode: str = "Default Chat"
@@ -38,7 +47,7 @@ class ChatHandler:
         Args:
             user_message: The user's message
             history: Gradio chat history (list of dicts with 'role' and 'content')
-            mode: Chat mode ("Default Chat" or "RAG")
+            mode: Chat mode ("Default Chat", "RAG", or "Planning Agent")
 
         Yields:
             StreamUpdate objects containing content chunks or metadata
@@ -64,6 +73,10 @@ class ChatHandler:
         if mode == "RAG" and self.rag_engine:
             logger.info("Using RAG Engine")
             engine = self.rag_engine
+        elif mode == "Planning Agent" and self.planning_agent:
+            logger.info("Using Planning Agent")
+            # PlanningAgent doesn't strictly follow ChatEngine protocol yet, but we'll adapt
+            engine = self.planning_agent
         else:
             logger.info("Using Default Chat Engine")
             engine = self.chat_engine
@@ -73,13 +86,47 @@ class ChatHandler:
         
         try:
             logger.info(f"Delegating to {mode} engine")
-            for update in engine.stream(langchain_messages):
-                # Accumulate content for storage
-                if update.content:
-                    accumulated_content += update.content
+            
+            if mode == "Planning Agent":
+                # Special handling for Planning Agent stream
+                # Initialize metrics for this stream
+                from datacom_ai.telemetry.metrics import TelemetryMetrics
+                metrics = TelemetryMetrics()
+                metrics.start_timer()
                 
-                # Yield the update to the UI
-                yield update
+                for chunk in engine.stream(langchain_messages):
+                    # Chunk is a dict with "content" or "metadata"
+                    if isinstance(chunk, dict):
+                        if "content" in chunk:
+                            content = chunk["content"]
+                            update = StreamUpdate(content=content)
+                            accumulated_content += content
+                            yield update
+                        
+                        if "metadata" in chunk and "usage" in chunk["metadata"]:
+                            usage = chunk["metadata"]["usage"]
+                            prompt_tokens = usage.get("input_tokens", 0)
+                            completion_tokens = usage.get("output_tokens", 0)
+                            total_tokens = usage.get("total_tokens", 0)
+                            metrics.set_token_usage(prompt_tokens, completion_tokens, total_tokens)
+                    else:
+                        # Fallback for string chunks
+                        update = StreamUpdate(content=chunk)
+                        accumulated_content += chunk
+                        yield update
+                
+                # Stop timer and yield final stats
+                metrics.stop_timer()
+                stats_dict = metrics.to_dict()
+                yield StreamUpdate(metadata=stats_dict)
+            else:
+                for update in engine.stream(langchain_messages):
+                    # Accumulate content for storage
+                    if update.content:
+                        accumulated_content += update.content
+                    
+                    # Yield the update to the UI
+                    yield update
 
             # Store the assistant's response
             assistant_msg = AIMessage(content=accumulated_content)

@@ -157,7 +157,7 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
                 )
             with gr.Column(scale=1):
                 mode_dropdown = gr.Dropdown(
-                    choices=["Default Chat", "RAG"],
+                    choices=["Default Chat", "RAG", "Planning Agent"],
                     value="Default Chat",
                     label="Chat Mode",
                     interactive=True

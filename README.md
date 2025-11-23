@@ -44,24 +44,6 @@ python chat.py
 ```
 
 The Gradio interface will launch at `http://localhost:7860`
-### Quick Verification Script
-
-Run the verification script to check all components:
-
-```bash
-# Using uv (recommended)
-uv run python scripts/verify_chat.py
-
-# Or using standard Python
-python scripts/verify_chat.py
-```
-
-This will verify:
-- ✅ All imports are working
-- ✅ Configuration is set correctly
-- ✅ Message store functionality
-- ✅ Telemetry calculations
-- ✅ LLM client initialization
 
 ### End-to-End Test
 
