@@ -73,3 +73,4 @@ class RAGChunkParser:
         total_tokens = usage.get("total_tokens", 0)
         metrics.set_token_usage(prompt_tokens, completion_tokens, total_tokens)
 
+

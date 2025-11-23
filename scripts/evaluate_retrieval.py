@@ -36,6 +36,7 @@ from deepeval.models import AzureOpenAIModel
 from datacom_ai.rag.pipeline import RAGPipeline
 from datacom_ai.config.settings import settings
 from datacom_ai.utils.logger import logger, setup_logging
+from datacom_ai.utils.structured_logging import log_evaluation_run
 
 
 def load_dataset(dataset_path: str) -> List[Dict[str, Any]]:
@@ -128,7 +129,15 @@ def main():
     # Setup logging
     log_level = os.getenv("LOG_LEVEL", "INFO")
     log_file = os.getenv("LOG_FILE", "logs/evaluation.log")
-    setup_logging(level=log_level, log_file=log_file if log_file else None)
+    log_format = os.getenv("LOG_FORMAT", "both")  # json, text, or both
+    json_log_file = os.getenv("LOG_JSON_FILE", "logs/evaluation.jsonl")
+    
+    setup_logging(
+        level=log_level, 
+        log_file=log_file if log_file else None,
+        log_format=log_format,
+        json_log_file=json_log_file if log_format in ("json", "both") else None
+    )
     
     logger.info("Starting RAG retrieval evaluation")
     
@@ -347,6 +356,38 @@ def main():
     logger.info("Note: When processing in batches, individual batch results are shown above.")
     logger.info("Each batch shows pass rates and scores for that subset of test cases.")
     logger.info("="*60)
+    
+    # Log evaluation results for analytics dashboard
+    metrics_dict = {}
+    if contextual_precision.score is not None:
+        metrics_dict["contextual_precision"] = contextual_precision.score
+    if contextual_recall.score is not None:
+        metrics_dict["contextual_recall"] = contextual_recall.score
+    if contextual_relevancy.score is not None:
+        metrics_dict["contextual_relevancy"] = contextual_relevancy.score
+    
+    # Calculate pass rates
+    if contextual_precision.score is not None:
+        metrics_dict["contextual_precision_passed"] = contextual_precision.score >= precision_threshold
+    if contextual_recall.score is not None:
+        metrics_dict["contextual_recall_passed"] = contextual_recall.score >= recall_threshold
+    if contextual_relevancy.score is not None:
+        metrics_dict["contextual_relevancy_passed"] = contextual_relevancy.score >= relevancy_threshold
+    
+    # Add thresholds to metrics for reference
+    metrics_dict["precision_threshold"] = precision_threshold
+    metrics_dict["recall_threshold"] = recall_threshold
+    metrics_dict["relevancy_threshold"] = relevancy_threshold
+    
+    if metrics_dict:
+        log_evaluation_run(
+            evaluation_type="rag_retrieval",
+            metrics=metrics_dict,
+            test_cases_count=len(test_cases),
+            k_value=k,
+            batch_size=batch_size
+        )
+        logger.info("Evaluation results logged for analytics dashboard")
 
 
 if __name__ == "__main__":

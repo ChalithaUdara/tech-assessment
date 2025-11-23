@@ -21,7 +21,15 @@ def main():
     # Setup logging - can be configured via environment variable
     log_level = os.getenv("LOG_LEVEL", "INFO")
     log_file = os.getenv("LOG_FILE", "logs/chat.log")
-    setup_logging(level=log_level, log_file=log_file if log_file else None)
+    log_format = os.getenv("LOG_FORMAT", "both")  # json, text, or both
+    json_log_file = os.getenv("LOG_JSON_FILE", "logs/chat.jsonl")
+    
+    setup_logging(
+        level=log_level, 
+        log_file=log_file if log_file else None,
+        log_format=log_format,
+        json_log_file=json_log_file if log_format in ("json", "both") else None
+    )
 
     try:
         logger.info("Starting chat application initialization")

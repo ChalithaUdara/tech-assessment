@@ -89,18 +89,41 @@ class TelemetryMetrics:
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Convert metrics to a dictionary.
+        Convert metrics to a dictionary in analytics-friendly format.
 
         Returns:
-            Dictionary with all metrics
+            Dictionary with all metrics suitable for analytics dashboard
         """
+        cost = self.get_cost()
+        latency = self.get_latency_ms()
+        
         return {
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens,
-            "cost_usd": self.get_cost(),
-            "latency_ms": self.get_latency_ms(),
+            "cost_usd": round(cost, 8),  # Round to 8 decimal places for consistency
+            "latency_ms": latency,
+            "model_name": settings.MODEL_NAME,
+            "deployment": settings.AZURE_OPENAI_DEPLOYMENT,
         }
+    
+    def log_metrics(self, event_type: str = "metrics", **extra_fields: Any) -> None:
+        """
+        Log metrics in structured format using structured logging helpers.
+        
+        Args:
+            event_type: Type of event to log (default: "metrics")
+            **extra_fields: Additional fields to include in the log
+        """
+        from datacom_ai.utils.structured_logging import _log_structured_event
+        
+        metrics_dict = self.to_dict()
+        metrics_dict.update(extra_fields)
+        
+        _log_structured_event(
+            event_type=event_type,
+            **metrics_dict
+        )
 
     @staticmethod
     def extract_usage_from_response_metadata(

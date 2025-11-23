@@ -30,3 +30,4 @@ class VectorStoreError(DatacomAIError):
     """Vector store operation errors."""
     pass
 
+
