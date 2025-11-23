@@ -4,6 +4,9 @@
 import sys
 import os
 
+# Disable tokenizers parallelism to avoid deadlocks
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 from datacom_ai.chat.chat_handler import ChatHandler
 from datacom_ai.chat.engine import SimpleChatEngine
 from datacom_ai.chat.message_store import MessageStore
