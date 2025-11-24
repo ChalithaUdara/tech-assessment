@@ -22,7 +22,7 @@ dependencies = [
     "amadeus>=9.0.0",
     "googlemaps>=4.10.0",
     "langchain-google-community>=1.0.0",
-    "gradio>=5.0.0",
+    "gradio==5.49.1",
     "deepeval>=0.1.0",
     "ragas>=0.1.0",
     "rapidfuzz>=3.0.0",
