@@ -1,6 +1,5 @@
-
-
 services:
+  # Vector Database
   qdrant:
     image: qdrant/qdrant:latest
     container_name: qdrant
@@ -13,9 +12,74 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
       - QDRANT__SERVICE__HTTP_PORT=6333
     restart: always
+    # Healthcheck using TCP port check (Qdrant container doesn't have curl/wget)
+    # Uses bash TCP redirection to check if port 6333 is listening
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - datacom-network
+
+  # Chat Application (Gradio UI)
+  chat:
+    build:
+      context: .
+      dockerfile: Dockerfile.chat
+    container_name: datacom-chat
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-both}
+      - LOG_JSON_FILE=${LOG_JSON_FILE:-logs/chat.jsonl}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - datacom-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Analytics Dashboard (Streamlit)
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: datacom-dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+    networks:
+      - datacom-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  datacom-network:
+    driver: bridge

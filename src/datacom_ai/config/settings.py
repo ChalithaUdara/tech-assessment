@@ -36,8 +36,8 @@ class Settings:
     QDRANT_COLLECTION_NAME: str = os.getenv("QDRANT_COLLECTION_NAME", "datacom_rag")
 
     # RAG Configuration
-    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
-    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "512"))
+    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
     RETRIEVER_K: int = int(os.getenv("RETRIEVER_K", "5"))  # Number of documents to retrieve
     
     # Text Splitter Configuration

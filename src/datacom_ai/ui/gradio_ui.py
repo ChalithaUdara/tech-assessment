@@ -111,7 +111,7 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
         return []
 
     # Create the chat interface
-    with gr.Blocks(title="Datacom AI Chat", theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="Datacom AI Chat") as demo:
         gr.Markdown(
             """
             # Datacom AI Chat Interface
@@ -123,7 +123,6 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
         with gr.Tabs():
             with gr.Tab("Chat"):
                 chatbot = gr.Chatbot(
-                    type="messages",
                     label="Conversation",
                     height=500,
                 )

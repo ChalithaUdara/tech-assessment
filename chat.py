@@ -99,7 +99,13 @@ def main():
 
         # Launch the interface
         logger.info("Launching Gradio interface on 0.0.0.0:7860")
-        demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
+        # Launch in blocking mode to keep container alive
+        demo.launch(
+            server_name="0.0.0.0",
+            server_port=7860,
+            share=False,
+            show_error=True
+        )
 
     except ValueError as e:
         logger.error(f"Configuration error: {e}")
