@@ -85,12 +85,12 @@ GPLACES_API_KEY=your-google-places-api-key  # For real attractions search
 ### 3. Start Qdrant Vector Database
 
 ```bash
-docker-compose up -d
+docker-compose up qdrant
 ```
 
 Verify Qdrant is running:
 - Dashboard: http://localhost:6333/dashboard
-- Health check: `curl http://localhost:6333/health`
+- Health check: `curl http://localhost:6333/healthz`
 
 ## Architecture
 

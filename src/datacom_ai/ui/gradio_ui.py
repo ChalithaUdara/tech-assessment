@@ -125,6 +125,7 @@ def create_chat_interface(chat_handler: ChatHandler) -> "gr.Blocks":
                 chatbot = gr.Chatbot(
                     label="Conversation",
                     height=500,
+                    type="messages",
                 )
 
                 with gr.Row():
